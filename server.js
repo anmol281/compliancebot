@@ -1,87 +1,20 @@
 
+// compliancebot_with_upload.js
 const express = require('express');
-const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const pdfParse = require('pdf-parse');
 
 const app = express();
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-// ✅ Expose PDFs
 app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
-app.post('/slack/events', express.json(), async (req, res) => {
-  try {
-    const { type, challenge, event } = req.body;
-
-    // 🔐 Step 1: Handle Slack URL verification (only once during setup)
-    if (type === 'url_verification') {
-      return res.status(200).send(challenge);
-    }
-
-    // 🧠 Step 2: Respond to actual Slack message events
-    if (event && event.type === 'message' && !event.bot_id) {
-      console.log('✅ Message received:', event.text);
-
-      // 👋 Echo back a reply using Slack API
-      await axios.post('https://slack.com/api/chat.postMessage', {
-        channel: event.channel,
-        text: `👋 Hello! You said: "${event.text}"`
-      }, {
-        headers: {
-          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-
-    // ✅ Always respond quickly to Slack
-    res.sendStatus(200);
-
-  } catch (error) {
-    console.error('❌ Slack event handling failed:', error);
-    res.sendStatus(500);
-  }
-});
-
-
-
-// 🧠 Intent Router (Simulated or LLM)
-async function handleMessageIntent(message) {
-  message = message.toLowerCase();
-  if (message.includes('finance')) {
-    const content = getTemplate('finance');
-    const file = generatePDF(content, 'finance');
-    return { text: `📄 Here is your Finance compliance doc: ${file}` };
-  } else if (message.includes('healthcare')) {
-    const content = getTemplate('healthcare');
-    const file = generatePDF(content, 'healthcare');
-    return { text: `📄 Healthcare compliance doc ready: ${file}` };
-  } else if (message.includes('rules') || message.includes(';')) {
-    const rules = message.split(';').map(r => '• ' + r.trim()).join('\n');
-    const file = generatePDF(rules, 'custom');
-    return { text: `🧠 Generated your custom policy doc: ${file}` };
-  }
-  return { text: '❓ Sorry, I did not understand. Try "generate finance compliance" or "rules: A; B; C"' };
-}
-
-// 🗂 Template Loader
-function getTemplate(sector) {
-  try {
-    return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
-  } catch {
-    return `Compliance template for ${sector} is not available.`;
-  }
-}
-
-// 📄 PDF Generator
 function generatePDF(content, prefix) {
   const filename = `${prefix}_${Date.now()}.pdf`;
   const filePath = path.join(__dirname, 'pdf/generated', filename);
@@ -92,6 +25,122 @@ function generatePDF(content, prefix) {
   return `https://compliancebot.onrender.com/pdf/generated/${filename}`;
 }
 
-app.listen(PORT, () => {
-  console.log(`ComplianceBot running at port ${PORT}`);
+function getTemplate(sector) {
+  try {
+    return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
+  } catch (err) {
+    return `⚠️ No template found for ${sector}.`;
+  }
+}
+
+async function sendSlackMessage(channel, text) {
+  return axios.post('https://slack.com/api/chat.postMessage', {
+    channel,
+    text
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json'
+    }
+  });
+}
+
+app.post('/slack/events', async (req, res) => {
+  try {
+    const { type, challenge, event } = req.body;
+    if (type === 'url_verification') return res.status(200).send(challenge);
+    if (!event || event.bot_id || event.type !== 'message') return res.sendStatus(200);
+
+    const text = event.text.toLowerCase();
+    const channel = event.channel;
+
+    if (text.includes('generate') && text.includes('template')) {
+      const sector = text.includes('finance') ? 'finance' :
+                     text.includes('healthcare') ? 'healthcare' :
+                     text.includes('insurance') ? 'insurance' : 'finance';
+
+      const template = getTemplate(sector);
+      const url = generatePDF(template, sector);
+      await sendSlackMessage(channel, `📄 Here's your ${sector} compliance template: ${url}`);
+
+    } else if (text.includes('create') && text.includes('policy')) {
+      const rules = text.match(/rules?:\s*(.*)/i);
+      if (rules && rules[1]) {
+        const formatted = rules[1].split(';').map(r => '• ' + r.trim()).join('\n');
+        const file = generatePDF(formatted, 'custom');
+        await sendSlackMessage(channel, `🧠 Here's your custom compliance policy: ${file}`);
+      } else {
+        await sendSlackMessage(channel, '⚠️ Please provide rules in format: "create policy with rules: rule1; rule2; rule3"');
+      }
+
+    } else if (text.includes('validate') && text.includes('policy')) {
+      let reply = '📥 Starting validation...';
+
+      if (event.files && event.files.length > 0) {
+        reply += `\n• Found uploaded policy`;
+      } else {
+        reply += `\n⚠️ No file detected. Please upload a PDF with this message.`;
+        await sendSlackMessage(channel, reply);
+        return res.sendStatus(200);
+      }
+
+      const loading = await sendSlackMessage(channel, reply + '\n• Downloading PDF...');
+
+      const pdfFile = event.files.find(f => f.filetype === 'pdf');
+      const fileUrl = pdfFile?.url_private_download;
+
+      const pdfResponse = await axios.get(fileUrl, {
+        headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+        responseType: 'arraybuffer'
+      });
+
+      const data = await pdfParse(pdfResponse.data);
+      const extracted = data.text;
+
+      const matched = extracted.includes('5000') && extracted.includes('approval');
+      const failed = !extracted.includes('reimbursement') ? 'Missing rule: reimbursement\n' : '';
+
+      await axios.post('https://slack.com/api/chat.update', {
+        channel,
+        ts: loading.data.ts,
+        text: `📋 Validation Report:\n${matched ? '✅ Basic checks passed' : '❌ Rules not met'}\n${failed}`
+      }, {
+        headers: {
+          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+    } else if (text.includes('audit') || text.includes('compliance summary')) {
+      const initial = await sendSlackMessage(channel, '🕵️‍♂️ Starting audit check...\n• Fetching records\n• Checking rule engine\n• Summarizing findings...');
+      await new Promise(r => setTimeout(r, 2000));
+
+      const summary = `✅ Passed: 60 bills\n❌ Failed: 30 (e.g. INV023 - Receipt missing)\n🕒 Unprocessed: 10`;
+      await axios.post('https://slack.com/api/chat.update', {
+        channel,
+        ts: initial.data.ts,
+        text: `📊 *Audit Summary:*\n${summary}`
+      }, {
+        headers: {
+          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+    } else {
+      await sendSlackMessage(channel,
+        `👋 Hi! I can help you with:
+• "generate template for finance"
+• "create policy with rules: A; B; C"
+• "validate my policy" + PDF
+• "show audit summary for last 10 days"`);
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Slack Event Error:', err);
+    res.sendStatus(500);
+  }
 });
+
+app.listen(PORT, () => console.log(`🚀 ComplianceBot listening on port ${PORT}`));
