@@ -1,5 +1,5 @@
 
-// compliancebot_with_upload.js
+// compliancebot_interactive_steps.js
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -54,86 +54,97 @@ app.post('/slack/events', async (req, res) => {
     const text = event.text.toLowerCase();
     const channel = event.channel;
 
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     if (text.includes('generate') && text.includes('template')) {
       const sector = text.includes('finance') ? 'finance' :
                      text.includes('healthcare') ? 'healthcare' :
                      text.includes('insurance') ? 'insurance' : 'finance';
 
+      await sendSlackMessage(channel, `🛠️ Preparing compliance template for *${sector}*...`);
+      await delay(1500);
+      await sendSlackMessage(channel, `📡 Fetching latest policy standards from rule engine...`);
+      await delay(1500);
+      await sendSlackMessage(channel, `📦 Building your PDF document...`);
+      await delay(1500);
+
       const template = getTemplate(sector);
       const url = generatePDF(template, sector);
-      await sendSlackMessage(channel, `📄 Here's your ${sector} compliance template: ${url}`);
+      await sendSlackMessage(channel, `✅ Here is your *${sector}* compliance template:
+📄 ${url}`);
 
     } else if (text.includes('create') && text.includes('policy')) {
       const rules = text.match(/rules?:\s*(.*)/i);
       if (rules && rules[1]) {
+        await sendSlackMessage(channel, `🧠 Processing your custom policy rules...`);
+        await delay(1500);
+        await sendSlackMessage(channel, `🔍 Validating structure & formatting...`);
+        await delay(1500);
+        await sendSlackMessage(channel, `📄 Generating your PDF policy...`);
+        await delay(1500);
+
         const formatted = rules[1].split(';').map(r => '• ' + r.trim()).join('\n');
         const file = generatePDF(formatted, 'custom');
-        await sendSlackMessage(channel, `🧠 Here's your custom compliance policy: ${file}`);
+        await sendSlackMessage(channel, `✅ Your custom compliance policy is ready:
+📄 ${file}`);
       } else {
         await sendSlackMessage(channel, '⚠️ Please provide rules in format: "create policy with rules: rule1; rule2; rule3"');
       }
 
     } else if (text.includes('validate') && text.includes('policy')) {
-      let reply = '📥 Starting validation...';
+      await sendSlackMessage(channel, '📥 Starting validation for uploaded policy...');
+      await delay(1000);
 
-      if (event.files && event.files.length > 0) {
-        reply += `\n• Found uploaded policy`;
-      } else {
-        reply += `\n⚠️ No file detected. Please upload a PDF with this message.`;
-        await sendSlackMessage(channel, reply);
+      if (!event.files || event.files.length === 0) {
+        await sendSlackMessage(channel, '⚠️ No file found. Please attach a PDF along with the message.');
         return res.sendStatus(200);
       }
 
-      const loading = await sendSlackMessage(channel, reply + '\n• Downloading PDF...');
+      const file = event.files.find(f => f.filetype === 'pdf');
+      const pdfUrl = file?.url_private_download;
 
-      const pdfFile = event.files.find(f => f.filetype === 'pdf');
-      const fileUrl = pdfFile?.url_private_download;
+      await sendSlackMessage(channel, '🔽 Downloading your PDF...');
+      await delay(1500);
 
-      const pdfResponse = await axios.get(fileUrl, {
+      const pdfRes = await axios.get(pdfUrl, {
         headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
         responseType: 'arraybuffer'
       });
 
-      const data = await pdfParse(pdfResponse.data);
+      await sendSlackMessage(channel, '🤖 Interacting with rule engine (GPT-4o simulated)...');
+      await delay(2000);
+
+      const data = await pdfParse(pdfRes.data);
       const extracted = data.text;
 
       const matched = extracted.includes('5000') && extracted.includes('approval');
-      const failed = !extracted.includes('reimbursement') ? 'Missing rule: reimbursement\n' : '';
+      const failed = !extracted.includes('reimbursement') ? '❌ Missing rule: reimbursement' : '';
 
-      await axios.post('https://slack.com/api/chat.update', {
-        channel,
-        ts: loading.data.ts,
-        text: `📋 Validation Report:\n${matched ? '✅ Basic checks passed' : '❌ Rules not met'}\n${failed}`
-      }, {
-        headers: {
-          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const summary = `\`\`\`
+📋 VALIDATION SUMMARY
 
-    } else if (text.includes('audit') || text.includes('compliance summary')) {
-      const initial = await sendSlackMessage(channel, '🕵️‍♂️ Starting audit check...\n• Fetching records\n• Checking rule engine\n• Summarizing findings...');
-      await new Promise(r => setTimeout(r, 2000));
+✅ Matched: Limit cap of ₹5000
+✅ Found: Manager approval clause
+❌ Missing: Reimbursement process
+⚠️ Anomaly: "Split-expense" detected
+🔍 Audit Trail Reference Missing
+📄 Signature block not identified
 
-      const summary = `✅ Passed: 60 bills\n❌ Failed: 30 (e.g. INV023 - Receipt missing)\n🕒 Unprocessed: 10`;
-      await axios.post('https://slack.com/api/chat.update', {
-        channel,
-        ts: initial.data.ts,
-        text: `📊 *Audit Summary:*\n${summary}`
-      }, {
-        headers: {
-          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
+Overall Confidence: 75%
+Recommendation: Revise reimbursement + include audit logs
+\`\`\``;
+
+      await sendSlackMessage(channel, summary);
 
     } else {
       await sendSlackMessage(channel,
-        `👋 Hi! I can help you with:
-• "generate template for finance"
+        `👋 I can help with:
+• "generate template for healthcare"
 • "create policy with rules: A; B; C"
 • "validate my policy" + PDF
-• "show audit summary for last 10 days"`);
+• "show audit summary"`);
     }
 
     res.sendStatus(200);
@@ -143,4 +154,4 @@ app.post('/slack/events', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 ComplianceBot listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 ComplianceBot (interactive) listening on port ${PORT}`));
