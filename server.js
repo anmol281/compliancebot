@@ -1,61 +1,104 @@
 const express = require('express');
-const axios = require('axios');
 const bodyParser = require('body-parser');
+const axios = require('axios');
+const fs = require('fs');
+const PDFDocument = require('pdfkit');
+const path = require('path');
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-
 const PORT = process.env.PORT || 3000;
 
-// Slash: Generate Template
+const sectors = ['finance', 'insurance', 'healthcare'];
+
+// 📄 Util: Generate PDF
+function generatePDF(content, filename) {
+  const doc = new PDFDocument();
+  const filePath = path.join(__dirname, 'pdf', 'generated', filename);
+  doc.pipe(fs.createWriteStream(filePath));
+  doc.fontSize(12).text(content, { align: 'left' });
+  doc.end();
+  return filePath;
+}
+
+// 📁 Util: Load sector template
+function getTemplate(sector) {
+  const templatePath = path.join(__dirname, 'templates', `${sector}.txt`);
+  return fs.existsSync(templatePath)
+    ? fs.readFileSync(templatePath, 'utf8')
+    : null;
+}
+
+// 🔍 Slash: Get compliance doc for a sector
 app.post('/slack/template', async (req, res) => {
   const { text, response_url } = req.body;
-  const industry = text.trim() || "generic";
+  let sector = text.trim().toLowerCase();
 
-  res.status(200).send(`📄 Generating a ${industry} compliance template...`);
+  if (!sectors.includes(sector)) {
+    await axios.post(response_url, {
+      response_type: "ephemeral",
+      text: `❓ Please specify a valid sector: finance, insurance, healthcare.\nUsage: \`/get_compliance_template finance\``
+    });
+    return res.sendStatus(200);
+  }
 
-  const documentText = await generateTemplate(industry); // Call to LLM or hardcoded logic
+  const template = getTemplate(sector);
+  const fileName = `compliance_${sector}_${Date.now()}.pdf`;
+  const filePath = generatePDF(template, fileName);
 
   await axios.post(response_url, {
     response_type: "in_channel",
-    text: `Here’s your base *${industry} compliance document*:\n\n${documentText}`,
+    text: `✅ *${sector.toUpperCase()} Compliance Document* generated.`,
+    attachments: [{
+      title: "Download PDF",
+      title_link: `https://compliancebot.onrender.com/pdf/generated/${fileName}`
+    }]
   });
+
+  res.sendStatus(200);
 });
 
-// Slash: Validate uploaded doc (simplified for now)
-app.post('/slack/validate', async (req, res) => {
+// ✍️ Slash: Custom rule-based compliance doc
+app.post('/slack/custom-template', async (req, res) => {
   const { text, response_url } = req.body;
 
-  res.status(200).send(`🧐 Validating document: *${text}*...`);
+  if (!text.trim()) {
+    res.status(200).send("Please provide rules, e.g. `/custom_compliance_doc Rule1; Rule2; Rule3`");
+    return;
+  }
 
-  const validation = await validateDocument(text); // placeholder
+  const customDoc = `Custom Compliance Document\n----------------------------\nRules Provided:\n${text.split(';').map(rule => '• ' + rule.trim()).join('\n')}`;
+  const fileName = `custom_compliance_${Date.now()}.pdf`;
+  const filePath = generatePDF(customDoc, fileName);
 
   await axios.post(response_url, {
     response_type: "in_channel",
-    text: `✅ *Validation Summary*:\n${validation}`,
+    text: `🧠 *Custom Compliance Document* created based on your inputs.`,
+    attachments: [{
+      title: "Download PDF",
+      title_link: `https://compliancebot.onrender.com/pdf/generated/${fileName}`
+    }]
   });
+
+  res.sendStatus(200);
 });
 
-async function generateTemplate(industry) {
-  const prompts = {
-    finance: `Finance compliance policy template:
-1. All expenses above ₹5,000 require receipt.
-2. Monthly reconciliation is mandatory.
-3. Vendor approval required before PO issuance.`,
-    health: `Health compliance template:
-1. Patient consent must be documented.
-2. HIPAA-compliant data handling.
-3. Retention period: 7 years minimum.`,
-  };
-  return prompts[industry.toLowerCase()] || prompts["finance"];
-}
+// 🧠 Slash: Validate document (stub)
+app.post('/slack/validate', async (req, res) => {
+  const { text, response_url } = req.body;
+  const validationSummary = `• ✅ Found 3 of 4 required clauses\n• ❌ Missing: Vendor approval policy\n• 🚨 Warning: Max spend cap not defined`;
 
-async function validateDocument(input) {
-  // Simulated response (use LLM in real case)
-  return `• Found: 3 of 5 required clauses\n• Missing: Vendor approval\n• Suggestion: Add clause on monthly audits`;
-}
+  await axios.post(response_url, {
+    response_type: "in_channel",
+    text: `🔍 Validation Result for *${text}*:\n${validationSummary}`
+  });
+
+  res.sendStatus(200);
+});
+
+// 🔓 Expose the /pdf/generated folder for public access via Render
+app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
 app.listen(PORT, () => {
-  console.log(`Slack ComplianceBot running on port ${PORT}`);
+  console.log(`ComplianceBot running on port ${PORT}`);
 });
