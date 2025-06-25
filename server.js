@@ -19,6 +19,7 @@ app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')))
 
 // 🔁 Slack Events Handler
 app.post('/slack/events', async (req, res) => {
+  console.log('✅ Request received:', event.text);
   const { type, challenge, event } = req.body;
 
   // Respond to Slack's URL verification
@@ -28,6 +29,7 @@ app.post('/slack/events', async (req, res) => {
 
   // Handle bot messages
   if (event && (event.type === 'message' || event.type === 'app_mention')) {
+    console.log('✅ Message received:', event.text);
     const userMessage = event.text;
     const channel = event.channel;
 
