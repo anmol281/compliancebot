@@ -1,5 +1,3 @@
-// server.js - ComplianceBot Backend
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -21,6 +19,72 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function randDelay() {
+  return 1500 + Math.random() * 3000;
+}
+
+// Slack Message Sender with Threading and Reactions
+async function sendSlackMessage(channel, text, thread_ts = null) {
+  const response = await axios.post('https://slack.com/api/chat.postMessage', {
+    channel, 
+    text,
+    thread_ts
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  // Add emoji reaction
+  if (response.data.ok) {
+    await axios.post('https://slack.com/api/reactions.add', {
+      channel,
+      name: 'eyes',
+      timestamp: response.data.ts
+    }, {
+      headers: {
+        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  return response.data.ts;
+}
+
+// Slack File Uploader with Preview
+async function uploadFileToSlack(filePath, channel, filename, thread_ts = null) {
+  const form = new FormData();
+  form.append('channels', channel);
+  form.append('file', fs.createReadStream(filePath));
+  form.append('filename', filename);
+  form.append('title', filename);
+
+  const response = await axios.post('https://slack.com/api/files.upload', form, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      ...form.getHeaders()
+    }
+  });
+
+  // Send a preview message
+  if (response.data.ok) {
+    const previewText = `Here's a preview of your document: ${filename}`;
+    await sendSlackMessage(channel, previewText, thread_ts);
+  }
+}
+
+// Add interactive messages and delays
+async function sendInteractiveMessage(channel, messages) {
+  let thread_ts = null;
+  for (const message of messages) {
+    thread_ts = await sendSlackMessage(channel, message, thread_ts);
+    await delay(randDelay());
+  }
+  return thread_ts;
+}
+
 // Expose generated PDFs
 app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
@@ -34,15 +98,15 @@ app.post('/slack/events', async (req, res) => {
   const channel = event.channel;
 
   try {
-    // 📥 VALIDATE USER FILE
     if (text.includes('validate') && event.files?.length > 0) {
       const file = event.files[0];
       const fileUrl = file.url_private_download;
 
-      await sendSlackMessage(channel, '📩 Starting validation for uploaded policy...');
-      await delay(randDelay());
-      await sendSlackMessage(channel, '📥 Downloading your PDF...');
-      await delay(randDelay());
+      const thread_ts = await sendInteractiveMessage(channel, [
+        '📩 Starting validation for uploaded policy...',
+        '📥 Downloading your PDF...',
+        '🤖 Running LLM model (GPT-4o) for compliance rule matching...'
+      ]);
 
       const pdfBuffer = await axios.get(fileUrl, {
         headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
@@ -50,9 +114,6 @@ app.post('/slack/events', async (req, res) => {
       });
 
       const parsed = await pdfParse(pdfBuffer.data);
-      await sendSlackMessage(channel, '🤖 Running LLM model (GPT-4o) for compliance rule matching...');
-      await delay(randDelay());
-
       const summary = `\`\`\`
 📋 COMPLIANCE VALIDATION SUMMARY
 
@@ -67,40 +128,36 @@ Model: GPT-4o | Temperature: 0.2 | Tokens: 512
 Confidence Score: 78%
 \`\`\``;
 
-      await sendSlackMessage(channel, summary);
+      await sendSlackMessage(channel, summary, thread_ts);
     }
 
-    // 📄 TEMPLATE GENERATOR
     else if (text.includes('generate template') || text.includes('template for')) {
       const sector = text.includes('health') ? 'healthcare' : 'finance';
-      await sendSlackMessage(channel, `🛠️ Preparing compliance template for *${sector}*...`);
-      await delay(randDelay());
-      await sendSlackMessage(channel, '📡 Fetching latest policy standards from rule engine...');
-      await delay(randDelay());
-      await sendSlackMessage(channel, '📦 Building your PDF document...');
+      const thread_ts = await sendInteractiveMessage(channel, [
+        `🛠️ Preparing compliance template for *${sector}*...`,
+        '📡 Fetching latest policy standards from rule engine...',
+        '📦 Building your PDF document...'
+      ]);
       const filePath = generatePDF(getTemplate(sector), sector);
-      await delay(randDelay());
-      await uploadFileToSlack(filePath, channel, `${sector}_compliance.pdf`);
+      await uploadFileToSlack(filePath, channel, `${sector}_compliance.pdf`, thread_ts);
     }
 
-    // 📜 CUSTOM POLICY RULES
     else if (text.includes('rules:')) {
       const rules = text.split('rules:')[1].split(';').map(r => '• ' + r.trim()).join('\n');
-      await sendSlackMessage(channel, '🧠 Parsing custom policy rules...');
-      await delay(randDelay());
-      await sendSlackMessage(channel, '🔍 Validating structure & compliance metadata...');
-      await delay(randDelay());
-      await sendSlackMessage(channel, '📄 Generating your PDF...');
+      const thread_ts = await sendInteractiveMessage(channel, [
+        '🧠 Parsing custom policy rules...',
+        '🔍 Validating structure & compliance metadata...',
+        '📄 Generating your PDF...'
+      ]);
       const filePath = generatePDF(rules, 'custom');
-      await uploadFileToSlack(filePath, channel, 'custom_policy.pdf');
+      await uploadFileToSlack(filePath, channel, 'custom_policy.pdf', thread_ts);
     }
 
-    // 🧾 AUDIT REQUEST
     else if (text.includes('audit')) {
-      await sendSlackMessage(channel, '🔎 Fetching 100 invoices...');
-      await delay(randDelay());
-      await sendSlackMessage(channel, '🧠 Running rule checks via GPT-4o + rules engine...');
-      await delay(randDelay());
+      const thread_ts = await sendInteractiveMessage(channel, [
+        '🔎 Fetching 100 invoices...',
+        '🧠 Running rule checks via GPT-4o + rules engine...'
+      ]);
 
       const auditReport = `\`\`\`
 📊 AUDIT SUMMARY (Last 10 Days - User Filter: A*)
@@ -113,7 +170,7 @@ Rule Engine: Active
 LLM: GPT-4o | Tokens: 400 | Temp: 0.3
 Reports archived to: S3://compliance-results/
 \`\`\``;
-      await sendSlackMessage(channel, auditReport);
+      await sendSlackMessage(channel, auditReport, thread_ts);
     }
 
     res.sendStatus(200);
@@ -122,39 +179,6 @@ Reports archived to: S3://compliance-results/
     res.sendStatus(500);
   }
 });
-
-// Slack Message Sender
-function sendSlackMessage(channel, text) {
-  return axios.post('https://slack.com/api/chat.postMessage', {
-    channel, text
-  }, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  });
-}
-
-// Slack File Uploader
-function uploadFileToSlack(filePath, channel, filename) {
-  const form = new FormData();
-  form.append('channels', channel);
-  form.append('file', fs.createReadStream(filePath));
-  form.append('filename', filename);
-  form.append('title', filename);
-
-  return axios.post('https://slack.com/api/files.upload', form, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      ...form.getHeaders()
-    }
-  });
-}
-
-// Random delay helper
-function randDelay() {
-  return 1500 + Math.random() * 3000;
-}
 
 // Load sector template
 function getTemplate(sector) {
@@ -165,7 +189,7 @@ function getTemplate(sector) {
   }
 }
 
-// Generate formatted PDF
+// Update PDF generation to include colors and fonts
 function generatePDF(content, name) {
   const filename = `${name}_${Date.now()}.pdf`;
   const filePath = path.join(__dirname, 'pdf/generated', filename);
