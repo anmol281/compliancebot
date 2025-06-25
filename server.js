@@ -1,3 +1,5 @@
+// server.js — ComplianceBot (Threaded, Deduplicated, Await-Fixed)
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -13,7 +15,7 @@ app.use(express.static(path.join(__dirname, 'pdf/generated')));
 const PORT = process.env.PORT || 3000;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// Delay utility
+// ✅ Delay Helpers
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -21,18 +23,85 @@ function randDelay() {
   return 1500 + Math.random() * 3000;
 }
 
-// Slack event handler
+// ✅ Slack Message Sender (async)
+async function sendSlackMsg(channel, text, thread_ts) {
+  return axios.post('https://slack.com/api/chat.postMessage', {
+    channel, text, thread_ts
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json'
+    }
+  });
+}
+
+// ✅ Send PDF Download Button (async)
+async function sendPDFButton(channel, filename, sector, thread_ts) {
+  const url = `https://compliancebot.onrender.com/pdf/generated/${filename}`;
+  return axios.post('https://slack.com/api/chat.postMessage', {
+    channel,
+    thread_ts,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `✅ Your *${sector}* compliance policy is ready.` }
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '📥 Download PDF' },
+            url,
+            style: 'primary'
+          }
+        ]
+      }
+    ]
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json'
+    }
+  });
+}
+
+// ✅ PDF Generation
+function generatePDF(content, name) {
+  const filename = `${name}_${Date.now()}.pdf`;
+  const filePath = path.join(__dirname, 'pdf/generated', filename);
+  const doc = new PDFDocument();
+  doc.pipe(fs.createWriteStream(filePath));
+  doc.fillColor('#007acc').fontSize(16).text(`📝 Compliance Policy: ${name.toUpperCase()}`, { align: 'center' });
+  doc.moveDown().fillColor('black').fontSize(12).text(content, { align: 'left' });
+  doc.end();
+  return filePath;
+}
+
+// ✅ Template Reader
+function getTemplate(sector) {
+  try {
+    return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
+  } catch {
+    return `⚠️ Template for ${sector} not found.`;
+  }
+}
+
+// ✅ Slack Event Handler
 app.post('/slack/events', async (req, res) => {
   const { type, challenge, event } = req.body;
+
+  // 🟢 Respond quickly to Slack to prevent retries
   if (type === 'url_verification') return res.status(200).send(challenge);
   if (!event || event.bot_id || event.subtype === 'bot_message') return res.sendStatus(200);
+  res.sendStatus(200); // early return to stop Slack retrying
 
+  // Then handle events asynchronously
   const text = event.text.toLowerCase();
   const channel = event.channel;
   const thread_ts = event.ts;
 
   try {
-    // 1️⃣ VALIDATE PDF POLICY
     if (text.includes('validate') && event.files?.length > 0) {
       const file = event.files[0];
       const url = file.url_private_download;
@@ -66,7 +135,6 @@ Status: 3/5 checks passed
       await sendSlackMsg(channel, summary, thread_ts);
     }
 
-    // 2️⃣ GENERATE SECTOR TEMPLATE
     else if (text.includes('generate template') || text.includes('template for')) {
       const sector = text.includes('health') ? 'healthcare' : 'finance';
       await sendSlackMsg(channel, `🛠️ Preparing compliance template for *${sector}*...`, thread_ts);
@@ -81,7 +149,6 @@ Status: 3/5 checks passed
       await sendPDFButton(channel, filename, sector, thread_ts);
     }
 
-    // 3️⃣ CUSTOM RULES FLOW
     else if (text.includes('rules:')) {
       const rules = text.split('rules:')[1].split(';').map(r => '• ' + r.trim()).join('\n');
       await sendSlackMsg(channel, '🧠 Parsing your custom rules...', thread_ts);
@@ -89,13 +156,13 @@ Status: 3/5 checks passed
       await sendSlackMsg(channel, '🔍 Checking structure & formatting...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '📄 Generating your PDF...', thread_ts);
+
       const filePath = generatePDF(rules, 'custom');
       const filename = path.basename(filePath);
       await delay(randDelay());
       await sendPDFButton(channel, filename, 'custom', thread_ts);
     }
 
-    // 4️⃣ AUDIT FLOW
     else if (text.includes('audit')) {
       await sendSlackMsg(channel, '📊 Starting compliance audit...', thread_ts);
       await delay(randDelay());
@@ -116,78 +183,9 @@ S3 Archive: s3://audit-reports/batch-20240625
 \`\`\``;
       await sendSlackMsg(channel, audit, thread_ts);
     }
-
-    res.sendStatus(200);
   } catch (e) {
     console.error('❌ Slack Event Error:', e.message);
-    res.sendStatus(500);
   }
 });
-
-// 📬 Basic text message
-function sendSlackMsg(channel, text, thread_ts) {
-  return axios.post('https://slack.com/api/chat.postMessage', {
-    channel,
-    text,
-    thread_ts
-  }, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  });
-}
-
-// 📥 Send button to download PDF
-function sendPDFButton(channel, filename, sector, thread_ts) {
-  const url = `https://compliancebot.onrender.com/pdf/generated/${filename}`;
-  return axios.post('https://slack.com/api/chat.postMessage', {
-    channel,
-    thread_ts,
-    blocks: [
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: `✅ Your *${sector}* compliance policy is ready.` }
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: { type: 'plain_text', text: '📥 Download PDF' },
-            url,
-            style: 'primary'
-          }
-        ]
-      }
-    ]
-  }, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  });
-}
-
-// 📄 Generate a styled PDF
-function generatePDF(content, name) {
-  const filename = `${name}_${Date.now()}.pdf`;
-  const filePath = path.join(__dirname, 'pdf/generated', filename);
-  const doc = new PDFDocument();
-  doc.pipe(fs.createWriteStream(filePath));
-  doc.fillColor('#007acc').fontSize(16).text(`📝 Compliance Policy: ${name.toUpperCase()}`, { align: 'center' });
-  doc.moveDown().fillColor('black').fontSize(12).text(content, { align: 'left' });
-  doc.end();
-  return filePath;
-}
-
-// 📂 Load from /templates
-function getTemplate(sector) {
-  try {
-    return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
-  } catch {
-    return `⚠️ Template for ${sector} not found.`;
-  }
-}
 
 app.listen(PORT, () => console.log(`🚀 ComplianceBot running on port ${PORT}`));
