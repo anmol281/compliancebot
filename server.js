@@ -17,37 +17,38 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 // ✅ Expose PDFs
 app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
-// 🔁 Slack Events Handler
-app.post('/slack/events', async (req, res) => {
-  console.log('✅ Request received:', event.text);
+app.post('/slack/events', express.json(), async (req, res) => {
+  console.log('✅ Request message received:', event.text);
   const { type, challenge, event } = req.body;
 
-  // Respond to Slack's URL verification
+  // ✅ Step 1: Respond to Slack's URL verification
   if (type === 'url_verification') {
     return res.status(200).send(challenge);
   }
 
-  // Handle bot messages
-  if (event && (event.type === 'message' || event.type === 'app_mention')) {
-    console.log('✅ Message received:', event.text);
-    const userMessage = event.text;
+  // ✅ Step 2: Respond to incoming Slack messages
+  if (event && event.type === 'message' && !event.bot_id) {
+    console.log('✅ Slack message received:', event.text);
+
     const channel = event.channel;
+    const userMessage = event.text;
 
-    const reply = await handleMessageIntent(userMessage);
-
+    // Reply back using chat.postMessage
     await axios.post('https://slack.com/api/chat.postMessage', {
-      channel: channel,
-      text: reply.text,
+      channel,
+      text: `You said: ${userMessage}`
     }, {
       headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+        'Content-Type': 'application/json'
       }
     });
   }
 
+  // ✅ Always respond 200 to Slack quickly
   res.sendStatus(200);
 });
+
 
 // 🧠 Intent Router (Simulated or LLM)
 async function handleMessageIntent(message) {
