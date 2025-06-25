@@ -1,0 +1,12 @@
+{
+  "name": "compliancebot",
+  "version": "1.0.0",
+  "description": "Compliance Bot for Hackathon - Salesforce",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
