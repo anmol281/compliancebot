@@ -14,7 +14,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const HOST_PATH = '/opt/render/project/src'; // Use this path for Render
+const HOST_PATH = 'https://compliancebot.onrender.com'; // Use this path for Render
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -203,6 +203,7 @@ function getTemplate(sector) {
 function generatePDF(content, name) {
   const filename = `${name}_${Date.now()}.pdf`;
   const filePath = path.join(HOST_PATH, 'pdf/generated', filename);
+  console.log(filepath);
   ensureDirectoryExistence(filePath);
   const doc = new PDFDocument();
   doc.pipe(fs.createWriteStream(filePath));
