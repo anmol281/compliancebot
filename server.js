@@ -96,6 +96,27 @@ app.post('/slack/validate', async (req, res) => {
   res.sendStatus(200);
 });
 
+app.post('/slack/events', express.json(), (req, res) => {
+  const { type, challenge, event } = req.body;
+
+  // ✅ Respond to Slack's URL verification challenge
+  if (type === 'url_verification') {
+    return res.status(200).send(challenge);
+  }
+
+  // 🔁 Handle actual Slack events (message, app_mention etc.)
+  if (event && (event.type === 'message' || event.type === 'app_mention')) {
+    const userMessage = event.text;
+
+    // 👉 Process message as needed (see earlier Agentforce-style steps)
+    console.log('Message received:', userMessage);
+
+    // Optional: Respond asynchronously using Slack Web API (chat.postMessage)
+  }
+
+  res.status(200).end(); // Always respond quickly to Slack
+});
+
 // 🔓 Expose the /pdf/generated folder for public access via Render
 app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
