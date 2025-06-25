@@ -18,36 +18,39 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
 
 app.post('/slack/events', express.json(), async (req, res) => {
-  console.log('✅ Request message received:', event.text);
-  const { type, challenge, event } = req.body;
+  try {
+    const { type, challenge, event } = req.body;
 
-  // ✅ Step 1: Respond to Slack's URL verification
-  if (type === 'url_verification') {
-    return res.status(200).send(challenge);
+    // 🔐 Step 1: Handle Slack URL verification (only once during setup)
+    if (type === 'url_verification') {
+      return res.status(200).send(challenge);
+    }
+
+    // 🧠 Step 2: Respond to actual Slack message events
+    if (event && event.type === 'message' && !event.bot_id) {
+      console.log('✅ Message received:', event.text);
+
+      // 👋 Echo back a reply using Slack API
+      await axios.post('https://slack.com/api/chat.postMessage', {
+        channel: event.channel,
+        text: `👋 Hello! You said: "${event.text}"`
+      }, {
+        headers: {
+          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+
+    // ✅ Always respond quickly to Slack
+    res.sendStatus(200);
+
+  } catch (error) {
+    console.error('❌ Slack event handling failed:', error);
+    res.sendStatus(500);
   }
-
-  // ✅ Step 2: Respond to incoming Slack messages
-  if (event && event.type === 'message' && !event.bot_id) {
-    console.log('✅ Slack message received:', event.text);
-
-    const channel = event.channel;
-    const userMessage = event.text;
-
-    // Reply back using chat.postMessage
-    await axios.post('https://slack.com/api/chat.postMessage', {
-      channel,
-      text: `You said: ${userMessage}`
-    }, {
-      headers: {
-        Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-
-  // ✅ Always respond 200 to Slack quickly
-  res.sendStatus(200);
 });
+
 
 
 // 🧠 Intent Router (Simulated or LLM)
