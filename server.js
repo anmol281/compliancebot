@@ -1,4 +1,4 @@
-// server.js — ComplianceBot (Threaded, Deduplicated, Await-Fixed)
+// server.js — ComplianceBot with PDF parse + req.body safety fixes
 
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -15,7 +15,6 @@ app.use(express.static(path.join(__dirname, 'pdf/generated')));
 const PORT = process.env.PORT || 3000;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// ✅ Delay Helpers
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -23,7 +22,6 @@ function randDelay() {
   return 1500 + Math.random() * 3000;
 }
 
-// ✅ Slack Message Sender (async)
 async function sendSlackMsg(channel, text, thread_ts) {
   return axios.post('https://slack.com/api/chat.postMessage', {
     channel, text, thread_ts
@@ -35,7 +33,6 @@ async function sendSlackMsg(channel, text, thread_ts) {
   });
 }
 
-// ✅ Send PDF Download Button (async)
 async function sendPDFButton(channel, filename, sector, thread_ts) {
   const url = `https://compliancebot.onrender.com/pdf/generated/${filename}`;
   return axios.post('https://slack.com/api/chat.postMessage', {
@@ -66,7 +63,6 @@ async function sendPDFButton(channel, filename, sector, thread_ts) {
   });
 }
 
-// ✅ PDF Generation
 function generatePDF(content, name) {
   const filename = `${name}_${Date.now()}.pdf`;
   const filePath = path.join(__dirname, 'pdf/generated', filename);
@@ -78,7 +74,6 @@ function generatePDF(content, name) {
   return filePath;
 }
 
-// ✅ Template Reader
 function getTemplate(sector) {
   try {
     return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
@@ -87,16 +82,15 @@ function getTemplate(sector) {
   }
 }
 
-// ✅ Slack Event Handler
 app.post('/slack/events', async (req, res) => {
-  const { type, challenge, event } = req.body;
+  const body = req.body || {};
+  const { type, challenge, event } = body;
 
-  // 🟢 Respond quickly to Slack to prevent retries
+  if (!type && !event) return res.sendStatus(400);
   if (type === 'url_verification') return res.status(200).send(challenge);
   if (!event || event.bot_id || event.subtype === 'bot_message') return res.sendStatus(200);
-  res.sendStatus(200); // early return to stop Slack retrying
+  res.sendStatus(200);
 
-  // Then handle events asynchronously
   const text = event.text.toLowerCase();
   const channel = event.channel;
   const thread_ts = event.ts;
@@ -117,7 +111,15 @@ app.post('/slack/events', async (req, res) => {
 
       await delay(randDelay());
       await sendSlackMsg(channel, '🤖 Validating with GPT-4o and internal rule engine...', thread_ts);
-      const parsed = await pdfParse(buffer.data);
+
+      let parsed;
+      try {
+        parsed = await pdfParse(buffer.data);
+      } catch (err) {
+        console.error('❌ PDF parsing failed:', err.message);
+        await sendSlackMsg(channel, '⚠️ Could not parse your PDF. Please upload a valid, non-encrypted file.', thread_ts);
+        return;
+      }
 
       await delay(randDelay());
       const summary = `\`\`\`
@@ -142,7 +144,6 @@ Status: 3/5 checks passed
       await sendSlackMsg(channel, '📡 Fetching latest standards from rule engine...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '📦 Building your PDF document...', thread_ts);
-
       const filePath = generatePDF(getTemplate(sector), sector);
       const filename = path.basename(filePath);
       await delay(randDelay());
@@ -156,7 +157,6 @@ Status: 3/5 checks passed
       await sendSlackMsg(channel, '🔍 Checking structure & formatting...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '📄 Generating your PDF...', thread_ts);
-
       const filePath = generatePDF(rules, 'custom');
       const filename = path.basename(filePath);
       await delay(randDelay());
