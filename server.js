@@ -14,6 +14,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const HOST_PATH = '/opt/render/project/src'; // Use this path for Render
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -95,7 +96,7 @@ async function sendInteractiveMessage(channel, messages) {
 }
 
 // Expose generated PDFs
-app.use('/pdf/generated', express.static(path.join(__dirname, 'pdf/generated')));
+app.use('/pdf/generated', express.static(path.join(HOST_PATH, 'pdf/generated')));
 
 app.post('/slack/events', async (req, res) => {
   const { type, challenge, event } = req.body;
@@ -192,7 +193,7 @@ Reports archived to: S3://compliance-results/
 // Load sector template
 function getTemplate(sector) {
   try {
-    return fs.readFileSync(path.join(__dirname, 'templates', `${sector}.txt`), 'utf8');
+    return fs.readFileSync(path.join(HOST_PATH, 'templates', `${sector}.txt`), 'utf8');
   } catch {
     return `Template for ${sector} not found.`;
   }
@@ -201,7 +202,7 @@ function getTemplate(sector) {
 // Update PDF generation to include colors and fonts
 function generatePDF(content, name) {
   const filename = `${name}_${Date.now()}.pdf`;
-  const filePath = path.join(__dirname, 'pdf/generated', filename);
+  const filePath = path.join(HOST_PATH, 'pdf/generated', filename);
   ensureDirectoryExistence(filePath);
   const doc = new PDFDocument();
   doc.pipe(fs.createWriteStream(filePath));
