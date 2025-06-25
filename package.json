@@ -8,5 +8,10 @@
     "start": "node server.js"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "express": "5.1.0",
+    "axios": "1.10.0",
+    "body-parser": "2.2.0"
+  }
 }
