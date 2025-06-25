@@ -23,6 +23,15 @@ function randDelay() {
   return 1500 + Math.random() * 3000;
 }
 
+// Ensure directory exists
+function ensureDirectoryExistence(filePath) {
+  const dirname = path.dirname(filePath);
+  if (fs.existsSync(dirname)) {
+    return true;
+  }
+  fs.mkdirSync(dirname, { recursive: true });
+}
+
 // Slack Message Sender with Threading and Reactions
 async function sendSlackMessage(channel, text, thread_ts = null) {
   const response = await axios.post('https://slack.com/api/chat.postMessage', {
@@ -193,6 +202,7 @@ function getTemplate(sector) {
 function generatePDF(content, name) {
   const filename = `${name}_${Date.now()}.pdf`;
   const filePath = path.join(__dirname, 'pdf/generated', filename);
+  ensureDirectoryExistence(filePath);
   const doc = new PDFDocument();
   doc.pipe(fs.createWriteStream(filePath));
   doc.fillColor('#007acc').fontSize(16).text(`📝 Compliance Document: ${name.toUpperCase()}`, { align: 'center' });
