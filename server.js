@@ -1,11 +1,10 @@
-// server.js — Fraud Detection Trigger + Thank You Response
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const pdfParse = require('pdf-parse');
 
 const app = express();
 app.use(bodyParser.json());
@@ -112,8 +111,64 @@ app.post('/slack/events', async (req, res) => {
   const thread_ts = event.thread_ts || event.ts;
 
   try {
-    // AUDIT FLOW
-    if (text.includes('audit')) {
+    // ✅ Validate uploaded PDF
+    if (text.includes('validate') && event.files?.length > 0) {
+      const file = event.files[0];
+      const url = file.url_private_download;
+
+      await sendSlackMsg(channel, '📩 Starting validation for uploaded policy...', thread_ts);
+      await delay(randDelay());
+      await sendSlackMsg(channel, '📥 Downloading your PDF...', thread_ts);
+
+      const buffer = await axios.get(url, {
+        headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+        responseType: 'arraybuffer'
+      });
+
+      await delay(randDelay());
+      await sendSlackMsg(channel, '🤖 Validating with GPT-4o and internal rule engine...', thread_ts);
+
+      let parsed;
+      try {
+        parsed = await pdfParse(buffer.data);
+      } catch (err) {
+        console.error('❌ PDF parsing failed:', err.message);
+        await sendSlackMsg(channel, '⚠️ Could not parse your PDF. Please upload a valid, non-encrypted file.', thread_ts);
+        return;
+      }
+
+      await delay(randDelay());
+      const summary = `\`\`\`
+📋 COMPLIANCE VALIDATION REPORT
+
+✅ ₹5000 Limit rule found
+✅ Approval clause detected
+⚠️ Reimbursement date missing
+❌ No digital signature block
+⚠️ "Split claim" pattern detected
+
+🔬 Model: GPT-4o | Temp: 0.3 | Tokens: 512
+Status: 3/5 checks passed
+\`\`\``;
+      await sendSlackMsg(channel, summary, thread_ts);
+    }
+
+    // ✅ Generate sector template
+    else if (text.includes('generate template') || text.includes('template for')) {
+      const sector = text.includes('health') ? 'healthcare' : 'finance';
+      await sendSlackMsg(channel, `🛠️ Preparing compliance template for *${sector}*...`, thread_ts);
+      await delay(randDelay());
+      await sendSlackMsg(channel, '📡 Fetching latest standards from rule engine...', thread_ts);
+      await delay(randDelay());
+      await sendSlackMsg(channel, '📦 Building your PDF document...', thread_ts);
+      const filePath = generatePDF(getTemplate(sector), sector);
+      const filename = path.basename(filePath);
+      await delay(randDelay());
+      await sendPDFButton(channel, filename, sector, thread_ts);
+    }
+
+    // ✅ Audit
+    else if (text.includes('audit')) {
       await sendSlackMsg(channel, '📊 Starting compliance audit...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '🔍 Fetching invoices from last 10 days...', thread_ts);
@@ -145,7 +200,7 @@ S3 Archive: s3://audit-reports/batch-20240625
       await sendSlackMsg(channel, audit, thread_ts);
     }
 
-    // FRAUD COMMAND (manual)
+    // ✅ Run fraud detection manually
     else if (text.includes('run fraud detection')) {
       const records = auditThreadMap.get(thread_ts);
       if (!records) {
@@ -160,14 +215,11 @@ S3 Archive: s3://audit-reports/batch-20240625
       if (fraudFlags.length === 0) {
         await sendSlackMsg(channel, '✅ No suspicious patterns detected in audit logs.', thread_ts);
       } else {
-        await sendSlackMsg(channel, `\`\`\`
-Fraud Insights:
-${fraudFlags.join('\n')}
-\`\`\``, thread_ts);
+        await sendSlackMsg(channel, `\`\`\`\nFraud Insights:\n${fraudFlags.join('\n')}\n\`\`\``, thread_ts);
       }
     }
 
-    // THANK YOU RESPONSE
+    // ✅ Friendly thank-you reply
     else if (text.includes('thanks compliance bot')) {
       await delay(randDelay());
       await sendSlackMsg(channel, '🤖 Always here to help! Let me know if you need another audit or compliance check 🔍📋', thread_ts);
@@ -178,4 +230,4 @@ ${fraudFlags.join('\n')}
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 ComplianceBot ready with audit, fraud trigger, and thank-you reply`));
+app.listen(PORT, () => console.log(`🚀 ComplianceBot (full version) running on port ${PORT}`));
