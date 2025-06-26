@@ -163,7 +163,7 @@ Status: 3/5 checks passed
       await sendPDFButton(channel, filename, 'custom', thread_ts);
     }
 
-    else if (text.includes('audit')) {
+    if (text.includes('audit')) {
       await sendSlackMsg(channel, '📊 Starting compliance audit...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '🔍 Fetching invoices from last 10 days...', thread_ts);
@@ -171,16 +171,31 @@ Status: 3/5 checks passed
       await sendSlackMsg(channel, '🧠 Running GPT-4o + rules engine...', thread_ts);
       await delay(randDelay());
 
+      // Mock audit log
+      const records = [
+        { user: 'john.doe', amount: 4900, split: true, sameDay: true },
+        { user: 'alice.k', amount: 5200, noReceipt: true },
+        { user: 'sam.p', amount: 4800, noReceipt: true },
+        { user: 'john.doe', amount: 4950, split: true, sameDay: true },
+        { user: 'dev.admin', amount: 6000, backdatedApproval: true, approver: 'unauthorized.user' }
+      ];
+
+      const fraudFlags = detectFraudPatterns(records);
+
       const audit = `\`\`\`
 📊 AUDIT SUMMARY: 100 Invoices
 
 ✅ Passed: 60
-❌ Failed: 30 (missing receipts, approvals)
+❌ Failed: 30
 🕓 Unprocessed: 10
 
 GPT-4o | Temp: 0.2 | Rules: active
 S3 Archive: s3://audit-reports/batch-20240625
+
+${fraudFlags.length ? '\nFraud Insights:' : ''}
+${fraudFlags.join('\n')}
 \`\`\``;
+
       await sendSlackMsg(channel, audit, thread_ts);
     }
   } catch (e) {
