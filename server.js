@@ -146,15 +146,21 @@ app.post('/slack/events', async (req, res) => {
       }
       await delay(randDelay());
       await sendSlackMsg(channel, `\`\`\`
-📋 COMPLIANCE VALIDATION REPORT
+`Validation Report – Compliance Summary
 
-✅ ₹5000 Limit rule found
-✅ Approval clause detected
-⚠️ Reimbursement deadline missing
-❌ Signature section not found
-⚠️ Split claim language not standardized
+| Rule / Check              | Status    | Remarks                                                                |
+|---------------------------|------------|-------------------------------------------------------------------------|
+| ₹5000 Limit Rule Found    |  ✅  | Clearly states receipts are required for expenses above ₹5000.        |
+| Approval Clause Detected  |  ✅  | Requires manager approval and proper documentation for all claims.    |
+| Reimbursement Deadline    |  ❌  | No mention of timeline for when approved reimbursements will be paid. |
+| Non-Reimbursable Items    |  ❌  | No list of excluded/non-reimbursable expenses (e.g., alcohol, fines). |
 
-🔎 Model: GPT-4o | Context aware | Score: 72%
+---
+Suggested Improvements
+• Add a Reimbursement Deadline section:
+  "All approved expense claims will be reimbursed within 10 business days."
+• Add a Non-Reimbursable Items section:
+  "The following will not be reimbursed: Alcohol, personal entertainment, fines, gifts without business justification."`;
 \`\`\``, thread_ts);
     }
 
