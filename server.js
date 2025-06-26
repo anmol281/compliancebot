@@ -222,7 +222,7 @@ S3 Archive: s3://audit-reports/batch-20240625
     // ✅ Friendly thank-you reply
     else if (text.includes('thanks compliance bot')) {
       await delay(randDelay());
-      await sendSlackMsg(channel, '🤖 Always here to help! Let me know if you need another audit or compliance check 🔍📋', thread_ts);
+      await sendSlackMsg(channel, '🤖 Always here to help! Let me know if you need another help.', thread_ts);
     }
 
   } catch (e) {
