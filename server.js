@@ -160,13 +160,14 @@ app.post('/slack/events', async (req, res) => {
 
     else if (text.includes('generate')) {
       const sector = text.includes('travel') ? 'Travel' : 'finance';
+
       await sendSlackMsg(channel, `:hammer_and_wrench: Generating compliance template for *${sector}* sector...`, thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, ':satellite: Contacting rule repository for most recent legal definitions...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, '📑 Structuring base clauses and formatting as per org style...', thread_ts);
       await delay(randDelay());
-      const file = generatePDF(getTemplate(sector), sector);
+      const file = sector === 'travel' ? 'travel.pdf' : 'finance_template.pdf';
       await sendPDFButton(channel, file, sector, thread_ts);
     }
 
