@@ -1,4 +1,3 @@
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -146,7 +145,7 @@ app.post('/slack/events', async (req, res) => {
       }
       await delay(randDelay());
       await sendSlackMsg(channel, `\`\`\`
-`Validation Report – Compliance Summary
+Validation Report – Compliance Summary
 
 | Rule / Check              | Status    | Remarks                                                                |
 |---------------------------|------------|-------------------------------------------------------------------------|
@@ -160,7 +159,7 @@ Suggested Improvements
 • Add a Reimbursement Deadline section:
   "All approved expense claims will be reimbursed within 10 business days."
 • Add a Non-Reimbursable Items section:
-  "The following will not be reimbursed: Alcohol, personal entertainment, fines, gifts without business justification."`;
+  "The following will not be reimbursed: Alcohol, personal entertainment, fines, gifts without business justification."
 \`\`\``, thread_ts);
     }
 
@@ -197,10 +196,20 @@ Suggested Improvements
 
       await sendSlackMsg(channel, `\`\`\`
 📊 AUDIT LOGS:
-Invoices Reviewed: 100
-✅ Compliant: 60
-❌ Non-Compliant: 30
-🕓 Unprocessed: 10
+Invoices Reviewed: 10
+✅ Compliant: 6
+❌ Non-Compliant: 4
+\`\`\``, thread_ts);
+
+      await delay(randDelay());
+      await sendSlackMsg(channel, `\`\`\`
+📋 DETAILED INVOICE SUMMARY:
+
+Invoice    	Violated Rule(s)	                           Status
+INV-9121	🚫 Receipt not attached                     ❌ Rejected
+INV-9140	🚫 No manager approval                      ❌ Rejected
+INV-9152	🚫 Bill date mismatch with travel dates	  ❌ Rejected
+INV-9165	🚫 BackDate Bill	                        ❌ Rejected
 \`\`\``, thread_ts);
     }
 
@@ -208,12 +217,12 @@ Invoices Reviewed: 100
       await sendSlackMsg(channel, `📘 Generating audit summary...`, thread_ts);
       await delay(randDelay());
       const table = `\`\`\`
-USER         | AMOUNT | FLAG
--------------|--------|-------------------------------
-john.doe     | 4900   | Split Expense (x2)
-alice.k      | 5200   | No Receipt
-sam.p        | 4800   | No Receipt
-dev.admin    | 6000   | Backdated Approval
+Invoice     | AMOUNT | FLAG
+------------|--------|-------------------------------
+INV-9240    | 4900   | Split Expense (x2)
+INV-9130    | 5200   | Non Reimbursable Expense
+INV-2140    | 4800   | Non-standard or obscure vendors
+INV-8140    | 6000   | Altered Receipts
 \`\`\``;
       await sendSlackMsg(channel, table, thread_ts);
     }
@@ -221,17 +230,20 @@ dev.admin    | 6000   | Backdated Approval
     else if (text.includes('run fraud detection')) {
       const records = auditThreadMap.get(thread_ts);
       if (!records) return sendSlackMsg(channel, '❗No previous audit found. Please run an audit first.', thread_ts);
-      await sendSlackMsg(channel, '🔐 Executing fraud detection on failed/unprocessed entries...', thread_ts);
+      await sendSlackMsg(channel, '🔐 Executing fraud detection on all entries...', thread_ts);
       await delay(randDelay());
-      const frauds = detectFraudPatterns(records);
-      if (!frauds.length) {
-        await sendSlackMsg(channel, '✅ No fraudulent behavior detected.', thread_ts);
-      } else {
-        await sendSlackMsg(channel, '```\\n🔎 FRAUD REPORT:\\n' + frauds.join('\\n') + '\\n```', thread_ts);
-      }
+      const table = `\`\`\`
+      Invoice     | AMOUNT | FLAG
+      ------------|--------|-------------------------------
+      INV-9240    | 4900   | Split Expense (x2)
+      INV-9130    | 5200   | Non Reimbursable Expense
+      INV-2140    | 4800   | Non-standard or obscure vendors
+      INV-8140    | 6000   | Altered Receipts
+      \`\`\``;
+      await sendSlackMsg(channel, table, thread_ts);
     }
 
-    else if (text.includes('create a case for all above')) {
+    else if (text.includes('case')) {
       await sendSlackMsg(channel, '📂 Creating Salesforce case(s) for flagged anomalies...', thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, `✅ Created Case #CSF-98721
@@ -239,9 +251,9 @@ dev.admin    | 6000   | Backdated Approval
 📅 ETA for review: 2 business days`, thread_ts);
     }
 
-    else if (text.includes('thanks compliance bot')) {
+    else if (text.includes('Thanks')) {
       await delay(randDelay());
-      await sendSlackMsg(channel, '🤖 You’re welcome! I’m always here for audits, templates, or policy checks.', thread_ts);
+      await sendSlackMsg(channel, '🤖 You\'re welcome! I\'m always here for audits, templates, or policy checks.', thread_ts);
     }
 
   } catch (e) {
