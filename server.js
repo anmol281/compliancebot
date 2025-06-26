@@ -19,7 +19,7 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 function randDelay() {
-  return 1500 + Math.random() * 3000;
+  return 3500 + Math.random() * 2500;
 }
 
 async function sendSlackMsg(channel, text, thread_ts) {
