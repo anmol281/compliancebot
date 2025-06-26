@@ -68,8 +68,22 @@ function generatePDF(content, name) {
   const filePath = path.join(__dirname, 'pdf/generated', filename);
   const doc = new PDFDocument();
   doc.pipe(fs.createWriteStream(filePath));
-  doc.fillColor('#007acc').fontSize(16).text(`📝 Compliance Policy: ${name.toUpperCase()}`, { align: 'center' });
-  doc.moveDown().fillColor('black').fontSize(12).text(content, { align: 'left' });
+
+  doc.fillColor('#007acc').fontSize(18).text(`📝 Compliance Template: ${name.toUpperCase()}`, { align: 'center' });
+  doc.moveDown(1.5);
+
+  const lines = content.split('\n');
+  for (let line of lines) {
+    if (line.startsWith('==')) {
+      doc.moveDown(1.2);
+      doc.fillColor('black').fontSize(14).text(line.replace(/==/g, '').trim(), { underline: true });
+    } else if (line.trim().startsWith('•')) {
+      doc.fillColor('#333').fontSize(12).text(line.trim(), { indent: 20 });
+    } else {
+      doc.moveDown(0.5);
+    }
+  }
+
   doc.end();
   return filename;
 }
