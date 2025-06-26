@@ -167,7 +167,7 @@ app.post('/slack/events', async (req, res) => {
       await delay(randDelay());
       await sendSlackMsg(channel, '📑 Structuring base clauses and formatting as per org style...', thread_ts);
       await delay(randDelay());
-      const file = sector === 'travel' ? 'travel.pdf' : 'finance_template.pdf';
+      const file = sector === 'Travel' ? 'travel.pdf' : 'finance_template.pdf';
       await sendPDFButton(channel, file, sector, thread_ts);
     }
 
