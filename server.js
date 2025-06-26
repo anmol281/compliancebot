@@ -21,6 +21,24 @@ function delay(ms) {
 function randDelay() {
   return 1500 + Math.random() * 3000;
 }
+// Fraud Detection Rules
+function detectFraudPatterns(records) {
+  const flags = [];
+
+  for (let r of records) {
+    if (r.amount < 5000 && r.split && r.sameDay) {
+      flags.push(`🚨 Split claim detected: ₹${r.amount} x2 by @${r.user}`);
+    }
+    if (r.noReceipt && r.amount > 3000) {
+      flags.push(`⚠️ High-value claim without receipt: ₹${r.amount} by @${r.user}`);
+    }
+    if (r.backdatedApproval) {
+      flags.push(`⚠️ Backdated approval by @${r.approver} for @${r.user}`);
+    }
+  }
+
+  return flags;
+}
 
 async function sendSlackMsg(channel, text, thread_ts) {
   return axios.post('https://slack.com/api/chat.postMessage', {
