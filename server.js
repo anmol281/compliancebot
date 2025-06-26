@@ -206,11 +206,7 @@ dev.admin    | 6000   | Backdated Approval
       if (!frauds.length) {
         await sendSlackMsg(channel, '✅ No fraudulent behavior detected.', thread_ts);
       } else {
-        await sendSlackMsg(channel, `\`\`\`
-🔎 FRAUD REPORT:
-${frauds.join('
-')}
-\`\`\``, thread_ts);
+        await sendSlackMsg(channel, '```\\n🔎 FRAUD REPORT:\\n' + frauds.join('\\n') + '\\n```', thread_ts);
       }
     }
 
