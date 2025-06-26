@@ -158,8 +158,8 @@ app.post('/slack/events', async (req, res) => {
 \`\`\``, thread_ts);
     }
 
-    else if (text.includes('generate template')) {
-      const sector = text.includes('health') ? 'healthcare' : 'finance';
+    else if (text.includes('generate')) {
+      const sector = text.includes('travel') ? 'Travel' : 'finance';
       await sendSlackMsg(channel, `:hammer_and_wrench: Generating compliance template for *${sector}* sector...`, thread_ts);
       await delay(randDelay());
       await sendSlackMsg(channel, ':satellite: Contacting rule repository for most recent legal definitions...', thread_ts);
